@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VICE OS // NETWORK DIAGNOSTICS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:#07020f;
+    --bg-deep:#170a34;
+    --bg-mid:#2a1052;
+    --pink:#ff2f92;
+    --cyan:#1fe8d0;
+    --purple:#b24bff;
+    --orange:#ff7a3d;
+    --gold:#ffd166;
+    --ink:#f2ecff;
+    --grid-line: rgba(31,232,208,.35);
+    --card-bg: rgba(23,10,52,.55);
+    --card-bd: rgba(255,255,255,.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(120% 90% at 50% -10%, var(--bg-mid), var(--bg-deep) 55%, var(--bg-void) 100%);
+    color:var(--ink);
+    font-family:'JetBrains Mono', monospace;
+    min-height:100vh;
+    overflow-x:hidden;
+    position:relative;
+  }
+
+  /* ---------- CRT / scanline overlay ---------- */
+  .crt{
+    position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 1px,
+      transparent 2px,
+      transparent 3px
+    );
+    mix-blend-mode:overlay;
+  }
+  .vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:49;
+    box-shadow: inset 0 0 18vw rgba(0,0,0,.75);
+  }
+  .flash{
+    position:fixed; inset:0; z-index:100; background:#fff; pointer-events:none;
+    animation: flashIn 1.1s ease-out forwards;
+  }
+  @keyframes flashIn{
+    0%{opacity:1;} 10%{opacity:0;} 14%{opacity:.7;} 20%{opacity:0;} 100%{opacity:0; visibility:hidden;}
+  }
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative;
+    height:78vh;
+    min-height:520px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    overflow:hidden;
+    border-bottom:2px solid var(--pink);
+    box-shadow:0 0 40px rgba(255,47,146,.4);
+  }
+  .sun{
+    position:absolute;
+    width:min(60vw,520px); height:min(60vw,520px);
+    border-radius:50%;
+    top:8%;
+    background:linear-gradient(180deg, var(--gold) 0%, var(--orange) 45%, var(--pink) 100%);
+    box-shadow:0 0 120px rgba(255,122,61,.55);
+    -webkit-mask-image:repeating-linear-gradient(to bottom, #000 0 6px, transparent 6px 12px);
+    mask-image:repeating-linear-gradient(to bottom, #000 0 6px, transparent 6px 12px);
+    opacity:.9;
+  }
+  .grid-floor{
+    position:absolute; bottom:-10%; left:0; right:0; height:55%;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size:60px 60px;
+    transform:perspective(300px) rotateX(62deg);
+    transform-origin:bottom;
+    animation:floorMove 2.2s linear infinite;
+    opacity:.85;
+  }
+  @keyframes floorMove{ from{background-position:0 0;} to{background-position:0 60px;} }
+
+  .palm{position:absolute; width:90px; opacity:.65; filter:drop-shadow(0 0 12px rgba(0,0,0,.6));}
+  .palm.l{ left:2%; bottom:0; transform:scaleX(-1);}
+  .palm.r{ right:2%; bottom:0;}
+
+  .title{
+    position:relative; z-index:2;
+    font-family:'Unbounded', sans-serif;
+    font-weight:900;
+    font-size:clamp(2.6rem, 8vw, 6rem);
+    line-height:.95;
+    letter-spacing:1px;
+    margin:0;
+    transform:skewX(-6deg);
+    background:linear-gradient(180deg, var(--cyan) 0%, var(--pink) 60%, var(--purple) 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    text-shadow:0 0 30px rgba(255,47,146,.55);
+    animation:titlePulse 3.6s ease-in-out infinite;
+  }
+  @keyframes titlePulse{
+    0%,100%{ filter:drop-shadow(0 0 14px rgba(31,232,208,.55)); }
+    50%{ filter:drop-shadow(0 0 26px rgba(255,47,146,.75)); }
+  }
+  .subtitle{
+    position:relative; z-index:2;
+    margin:.6rem 0 2rem;
+    letter-spacing:4px;
+    font-size:clamp(.65rem,1.6vw,.9rem);
+    color:var(--cyan);
+    text-shadow:0 0 8px rgba(31,232,208,.6);
+  }
+
+  .start-btn{
+    position:relative; z-index:2;
+    font-family:'Unbounded', sans-serif;
+    font-weight:700;
+    font-size:clamp(.9rem,2vw,1.15rem);
+    letter-spacing:2px;
+    padding:1rem 2.6rem;
+    color:var(--bg-void);
+    background:linear-gradient(90deg, var(--cyan), var(--gold));
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    box-shadow:0 0 25px rgba(31,232,208,.55), 0 6px 0 rgba(0,0,0,.35);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .start-btn:hover{ transform:translateY(-2px); box-shadow:0 0 35px rgba(255,209,102,.7), 0 8px 0 rgba(0,0,0,.35); }
+  .start-btn:active{ transform:translateY(2px); box-shadow:0 0 20px rgba(31,232,208,.5), 0 2px 0 rgba(0,0,0,.35); }
+  .start-btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+
+  .status-line{
+    position:relative; z-index:2;
+    margin-top:1.1rem;
+    font-size:.8rem;
+    letter-spacing:2px;
+    color:var(--gold);
+    min-height:1.2em;
+  }
+  .status-line::before{ content:"// "; color:var(--pink); }
+
+  /* ---------- DASHBOARD ---------- */
+  .dashboard{
+    max-width:1180px;
+    margin:0 auto;
+    padding:2.4rem 1.2rem 3rem;
+    display:flex;
+    flex-direction:column;
+    gap:2rem;
+  }
+  .panel-title{
+    font-family:'Unbounded', sans-serif;
+    font-size:.85rem;
+    letter-spacing:3px;
+    color:var(--purple);
+    text-shadow:0 0 10px rgba(178,75,255,.6);
+    margin:0 0 1rem;
+    display:flex; align-items:center; gap:.6rem;
+  }
+  .panel-title::before, .panel-title::after{
+    content:""; flex:1; height:1px;
+    background:linear-gradient(90deg, transparent, var(--purple), transparent);
+    opacity:.6;
+  }
+
+  .gauges{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:1.4rem;
+  }
+  .gauge-card{
+    background:var(--card-bg);
+    border:1px solid var(--card-bd);
+    border-radius:14px;
+    padding:1.2rem 1rem 1.4rem;
+    text-align:center;
+    backdrop-filter:blur(6px);
+    box-shadow:0 0 0 1px rgba(255,255,255,.02), 0 20px 40px rgba(0,0,0,.35);
+  }
+  .gauge-svg{ width:100%; max-width:280px; }
+  .gauge-track{ fill:none; stroke:rgba(255,255,255,.09); stroke-width:14; stroke-linecap:round; }
+  .gauge-progress{ fill:none; stroke-width:14; stroke-linecap:round; transition:stroke-dashoffset .25s linear; }
+  .gauge-progress.dl{ stroke:url(#gradDl); filter:drop-shadow(0 0 8px rgba(31,232,208,.8)); }
+  .gauge-progress.ul{ stroke:url(#gradUl); filter:drop-shadow(0 0 8px rgba(255,47,146,.8)); }
+  .needle{ stroke:var(--gold); stroke-width:4; stroke-linecap:round; transition:transform .2s ease-out; filter:drop-shadow(0 0 6px rgba(255,209,102,.8)); }
+  .hub{ fill:var(--gold); }
+  .tick{ font-size:11px; fill:rgba(242,236,255,.55); font-family:'JetBrains Mono', monospace; }
+  .gauge-value{ margin-top:.2rem; font-family:'Unbounded', sans-serif; font-size:1.8rem; font-weight:700; }
+  .gauge-value small{ font-family:'JetBrains Mono', monospace; font-size:.9rem; color:rgba(242,236,255,.6); }
+  .gauge-label{ margin-top:.3rem; letter-spacing:2px; font-size:.7rem; color:var(--cyan); }
+
+  .stats-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:1rem;
+  }
+  .stat-card{
+    background:var(--card-bg);
+    border:1px solid var(--card-bd);
+    border-radius:10px;
+    padding:1rem 1.1rem;
+    position:relative;
+    overflow:hidden;
+  }
+  .stat-card::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(180deg, var(--cyan), var(--pink));
+  }
+  .stat-label{ font-size:.68rem; letter-spacing:2px; color:rgba(242,236,255,.55); }
+  .stat-value{ font-family:'Unbounded', sans-serif; font-size:1.15rem; margin-top:.35rem; word-break:break-word; color:var(--ink); }
+
+  .radar-section{
+    background:var(--card-bg);
+    border:1px solid var(--card-bd);
+    border-radius:14px;
+    padding:1rem;
+  }
+  #pingCanvas{ width:100%; height:150px; display:block; border-radius:8px; }
+  .radar-label{ text-align:center; margin-top:.6rem; letter-spacing:2px; font-size:.7rem; color:var(--cyan); }
+
+  .wanted-section{
+    text-align:center;
+    background:var(--card-bg);
+    border:1px solid var(--card-bd);
+    border-radius:14px;
+    padding:1.6rem 1rem;
+  }
+  .wanted-label{ letter-spacing:3px; font-size:.75rem; color:var(--gold); margin-bottom:.8rem; }
+  .stars{ font-size:2.2rem; letter-spacing:.3rem; }
+  .stars span{ color:rgba(255,255,255,.12); transition:color .3s, text-shadow .3s; }
+  .stars span.on{ color:var(--gold); text-shadow:0 0 16px rgba(255,209,102,.85); }
+  .verdict{
+    margin-top:.9rem; font-family:'Unbounded', sans-serif; font-size:1rem;
+    color:var(--pink); text-shadow:0 0 10px rgba(255,47,146,.5);
+    min-height:1.4em;
+  }
+
+  footer{
+    text-align:center; padding:1.6rem 1rem 2.4rem;
+    font-size:.68rem; letter-spacing:1px; color:rgba(242,236,255,.35);
+  }
+
+  @media (max-width:560px){
+    .stars{ font-size:1.6rem; letter-spacing:.2rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="flash"></div>
+  <div class="crt"></div>
+  <div class="vignette"></div>
+
+  <header class="hero">
+    <div class="sun"></div>
+    <div class="grid-floor"></div>
+    <svg class="palm l" viewBox="0 0 100 160"><path d="M50 160 L54 60" stroke="#0a0512" stroke-width="6" fill="none"/><g fill="#0a0512"><path d="M54 60 C 20 40, 5 55, 0 40 C 25 40, 40 45, 54 60 Z"/><path d="M54 60 C 90 35, 100 50, 100 35 C 75 38, 62 45, 54 60 Z"/><path d="M54 60 C 30 20, 10 10, 15 0 C 35 20, 45 35, 54 60 Z"/><path d="M54 60 C 75 15, 95 8, 92 0 C 72 18, 60 35, 54 60 Z"/><path d="M54 60 C 44 15, 48 5, 40 0 C 46 20, 50 40, 54 60 Z"/></g></svg>
+    <svg class="palm r" viewBox="0 0 100 160"><path d="M50 160 L54 60" stroke="#0a0512" stroke-width="6" fill="none"/><g fill="#0a0512"><path d="M54 60 C 20 40, 5 55, 0 40 C 25 40, 40 45, 54 60 Z"/><path d="M54 60 C 90 35, 100 50, 100 35 C 75 38, 62 45, 54 60 Z"/><path d="M54 60 C 30 20, 10 10, 15 0 C 35 20, 45 35, 54 60 Z"/><path d="M54 60 C 75 15, 95 8, 92 0 C 72 18, 60 35, 54 60 Z"/><path d="M54 60 C 44 15, 48 5, 40 0 C 46 20, 50 40, 54 60 Z"/></g></svg>
+
+    <h1 class="title">NET<br>DIAGNOSTICS</h1>
+    <p class="subtitle">VICE OS &nbsp;//&nbsp; МОДУЛЬ ДИАГНОСТИКИ СВЯЗИ</p>
+    <button id="startBtn" class="start-btn">▶ ЗАПУСТИТЬ ТЕСТ</button>
+    <div class="status-line" id="status">ГОТОВ К ЗАПУСКУ</div>
+  </header>
+
+  <main class="dashboard">
+
+    <section>
+      <h2 class="panel-title">СКОРОСТНЫЕ ПОКАЗАТЕЛИ</h2>
+      <div class="gauges">
+        <div class="gauge-card">
+          <svg class="gauge-svg" viewBox="0 0 240 170">
+            <defs>
+              <linearGradient id="gradDl" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#1fe8d0"/>
+                <stop offset="100%" stop-color="#b24bff"/>
+              </linearGradient>
+            </defs>
+            <path class="gauge-track" d="M20,150 A100,100 0 0 1 220,150"/>
+            <path id="dlArc" class="gauge-progress dl" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" d="M20,150 A100,100 0 0 1 220,150"/>
+            <text class="tick" x="12" y="168">0</text>
+            <text class="tick" x="200" y="168">300</text>
+            <line id="dlNeedle" class="needle" x1="120" y1="150" x2="120" y2="62" style="transform-origin:120px 150px; transform:rotate(-90deg);"/>
+            <circle class="hub" cx="120" cy="150" r="7"/>
+          </svg>
+          <div class="gauge-value"><span id="dlValue">0.0</span> <small>Мбит/с</small></div>
+          <div class="gauge-label">СКОРОСТЬ ЗАГРУЗКИ</div>
+        </div>
+
+        <div class="gauge-card">
+          <svg class="gauge-svg" viewBox="0 0 240 170">
+            <defs>
+              <linearGradient id="gradUl" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ff2f92"/>
+                <stop offset="100%" stop-color="#ff7a3d"/>
+              </linearGradient>
+            </defs>
+            <path class="gauge-track" d="M20,150 A100,100 0 0 1 220,150"/>
+            <path id="ulArc" class="gauge-progress ul" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" d="M20,150 A100,100 0 0 1 220,150"/>
+            <text class="tick" x="12" y="168">0</text>
+            <text class="tick" x="200" y="168">150</text>
+            <line id="ulNeedle" class="needle" x1="120" y1="150" x2="120" y2="62" style="transform-origin:120px 150px; transform:rotate(-90deg);"/>
+            <circle class="hub" cx="120" cy="150" r="7"/>
+          </svg>
+          <div class="gauge-value"><span id="ulValue">0.0</span> <small>Мбит/с</small></div>
+          <div class="gauge-label">СКОРОСТЬ ОТДАЧИ</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="panel-title">ДАННЫЕ СОЕДИНЕНИЯ</h2>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">ПИНГ</div><div class="stat-value" id="pingVal">-- ms</div></div>
+        <div class="stat-card"><div class="stat-label">ДЖИТТЕР</div><div class="stat-value" id="jitterVal">-- ms</div></div>
+        <div class="stat-card"><div class="stat-label">IP-АДРЕС</div><div class="stat-value" id="ipVal">--</div></div>
+        <div class="stat-card"><div class="stat-label">ПРОВАЙДЕР</div><div class="stat-value" id="ispVal">--</div></div>
+        <div class="stat-card"><div class="stat-label">ЛОКАЦИЯ</div><div class="stat-value" id="locVal">--</div></div>
+        <div class="stat-card"><div class="stat-label">ТИП СЕТИ (браузер)</div><div class="stat-value" id="connVal">--</div></div>
+      </div>
+    </section>
+
+    <section class="radar-section">
+      <h2 class="panel-title">МОНИТОР ПИНГА</h2>
+      <canvas id="pingCanvas"></canvas>
+      <div class="radar-label">ЗАДЕРЖКА В РЕАЛЬНОМ ВРЕМЕНИ</div>
+    </section>
+
+    <section class="wanted-section">
+      <div class="wanted-label">УРОВЕНЬ РОЗЫСКА СЕТИ</div>
+      <div class="stars" id="starsRow">
+        <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+      </div>
+      <div class="verdict" id="verdictText">Запусти тест, чтобы узнать вердикт</div>
+    </section>
+
+  </main>
+
+  <footer>
+    Измерения выполняются в вашем браузере через открытые CORS-эндпоинты Cloudflare Speed Test и ipapi.co.<br>
+    Результаты приблизительные и могут отличаться от специализированных сервисов из-за блокировщиков рекламы, VPN или ограничений CORS.
+  </footer>
+
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const startBtn = $('startBtn');
+  const statusEl = $('status');
+  const dlArc = $('dlArc'), ulArc = $('ulArc');
+  const dlNeedle = $('dlNeedle'), ulNeedle = $('ulNeedle');
+  const dlValue = $('dlValue'), ulValue = $('ulValue');
+  const pingVal = $('pingVal'), jitterVal = $('jitterVal');
+  const ipVal = $('ipVal'), ispVal = $('ispVal'), locVal = $('locVal'), connVal = $('connVal');
+  const verdictText = $('verdictText');
+  const starsRow = $('starsRow').querySelectorAll('span');
+  const canvas = $('pingCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const DL_MAX = 300; // шкала гейджа, Мбит/с
+  const UL_MAX = 150;
+  const pingHistory = [];
+
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  function setStatus(text){ statusEl.textContent = text; }
+
+  function setGauge(kind, value){
+    const max = kind === 'dl' ? DL_MAX : UL_MAX;
+    const arc = kind === 'dl' ? dlArc : ulArc;
+    const needle = kind === 'dl' ? dlNeedle : ulNeedle;
+    const label = kind === 'dl' ? dlValue : ulValue;
+    const frac = Math.max(0, Math.min(1, value / max));
+    arc.style.strokeDashoffset = String(100 * (1 - frac));
+    const deg = -90 + frac * 180;
+    needle.style.transform = `rotate(${deg}deg)`;
+    label.textContent = value.toFixed(1);
+  }
+
+  function resizeCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 150 * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function drawPingGraph(){
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = 150;
+    ctx.clearRect(0,0,w,h);
+    // grid
+    ctx.strokeStyle = 'rgba(31,232,208,0.12)';
+    ctx.lineWidth = 1;
+    for(let x=0;x<w;x+=30){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+    for(let y=0;y<h;y+=25){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    if(pingHistory.length < 2) return;
+    const maxPing = Math.max(120, ...pingHistory);
+    ctx.beginPath();
+    ctx.strokeStyle = '#1fe8d0';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#1fe8d0';
+    ctx.shadowBlur = 8;
+    pingHistory.forEach((p,i)=>{
+      const x = (i/(pingHistory.length-1)) * w;
+      const y = h - (Math.min(p, maxPing)/maxPing) * (h-10) - 5;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  async function measurePing(count){
+    for(let i=0;i<count;i++){
+      const start = performance.now();
+      try{
+        await fetch(`https://speed.cloudflare.com/__down?bytes=0&cb=${Math.random()}`, {cache:'no-store', mode:'cors'});
+      }catch(e){
+        continue;
+      }
+      const t = performance.now() - start;
+      pingHistory.push(t);
+      drawPingGraph();
+      await sleep(60);
+    }
+    if(pingHistory.length === 0) throw new Error('нет ответа от сервера');
+    const avg = pingHistory.reduce((a,b)=>a+b,0)/pingHistory.length;
+    const jitter = Math.sqrt(pingHistory.reduce((a,b)=>a+Math.pow(b-avg,2),0)/pingHistory.length);
+    return { avg, jitter };
+  }
+
+  async function measureDownload(){
+    const bytes = 24_000_000;
+    const start = performance.now();
+    const res = await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}&cb=${Math.random()}`, {cache:'no-store', mode:'cors'});
+    if(!res.body){
+      const buf = await res.arrayBuffer();
+      const secs = (performance.now()-start)/1000;
+      const mbps = (buf.byteLength*8)/secs/1e6;
+      setGauge('dl', mbps);
+      return mbps;
+    }
+    const reader = res.body.getReader();
+    let received = 0;
+    let lastDraw = 0;
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      received += value.length;
+      const now = performance.now();
+      if(now - lastDraw > 120){
+        const secs = (now-start)/1000;
+        setGauge('dl', (received*8)/secs/1e6);
+        lastDraw = now;
+      }
+    }
+    const totalSecs = (performance.now()-start)/1000;
+    const finalMbps = (received*8)/totalSecs/1e6;
+    setGauge('dl', finalMbps);
+    return finalMbps;
+  }
+
+  function measureUpload(){
+    return new Promise((resolve, reject)=>{
+      const size = 8_000_000;
+      const data = new Blob([new Uint8Array(size)]);
+      const start = performance.now();
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://speed.cloudflare.com/__up');
+      xhr.upload.onprogress = (e)=>{
+        if(e.lengthComputable){
+          const secs = (performance.now()-start)/1000;
+          if(secs > 0) setGauge('ul', (e.loaded*8)/secs/1e6);
+        }
+      };
+      xhr.onload = ()=>{
+        const secs = (performance.now()-start)/1000;
+        const mbps = (size*8)/secs/1e6;
+        setGauge('ul', mbps);
+        resolve(mbps);
+      };
+      xhr.onerror = ()=> reject(new Error('ошибка отправки данных'));
+      xhr.send(data);
+    });
+  }
+
+  async function getIpInfo(){
+    const res = await fetch('https://ipapi.co/json/');
+    if(!res.ok) throw new Error('ip lookup failed');
+    return res.json();
+  }
+
+  function getConnInfo(){
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if(!c) return 'не поддерживается браузером';
+    const parts = [];
+    if(c.effectiveType) parts.push(c.effectiveType.toUpperCase());
+    if(typeof c.downlink === 'number') parts.push(`~${c.downlink} Мбит/с`);
+    if(typeof c.rtt === 'number') parts.push(`RTT ${c.rtt}ms`);
+    return parts.length ? parts.join(' · ') : 'нет данных';
+  }
+
+  function computeScore({ping, jitter, dl, ul}){
+    let score = 0;
+    score += ping < 20 ? 30 : ping < 50 ? 24 : ping < 100 ? 16 : ping < 200 ? 8 : 2;
+    score += jitter < 5 ? 15 : jitter < 15 ? 10 : jitter < 30 ? 5 : 1;
+    score += dl > 100 ? 35 : dl > 50 ? 28 : dl > 25 ? 20 : dl > 10 ? 12 : dl > 5 ? 6 : 2;
+    score += ul > 30 ? 20 : ul > 15 ? 15 : ul > 5 ? 10 : ul > 1 ? 5 : 1;
+    return score;
+  }
+
+  function starsForScore(score){
+    if(score >= 85) return 5;
+    if(score >= 65) return 4;
+    if(score >= 45) return 3;
+    if(score >= 25) return 2;
+    return 1;
+  }
+
+  const verdicts = {
+    1: '🚨 КРИТИЧЕСКИЙ РОЗЫСК — соединение еле подаёт признаки жизни',
+    2: 'Розыск активен — жди лагов, зависаний и разрывов',
+    3: 'Терпимо — на связи, но полиция дышит в спину',
+    4: 'Чисто — сеть быстрая, погоня почти не грозит',
+    5: 'Легендарный отрыв — сеть летает как угнанный суперкар'
+  };
+
+  function updateStars(count){
+    starsRow.forEach((s,i)=> s.classList.toggle('on', i < count));
+  }
+
+  async function runDiagnostics(){
+    startBtn.disabled = true;
+    pingHistory.length = 0;
+    drawPingGraph();
+    setGauge('dl', 0);
+    setGauge('ul', 0);
+    updateStars(0);
+    verdictText.textContent = 'Идёт анализ...';
+    pingVal.textContent = '-- ms';
+    jitterVal.textContent = '-- ms';
+
+    try{
+      const ipInfoPromise = getIpInfo().catch(()=>null);
+      connVal.textContent = getConnInfo();
+
+      setStatus('ЗАМЕР ПИНГА...');
+      const { avg, jitter } = await measurePing(6);
+      pingVal.textContent = avg.toFixed(0) + ' ms';
+      jitterVal.textContent = jitter.toFixed(1) + ' ms';
+
+      setStatus('ЗАГРУЗКА ТЕСТОВОГО ФАЙЛА...');
+      const dl = await measureDownload();
+
+      setStatus('ОТПРАВКА ДАННЫХ...');
+      const ul = await measureUpload();
+
+      const ipInfo = await ipInfoPromise;
+      if(ipInfo){
+        ipVal.textContent = ipInfo.ip || '--';
+        ispVal.textContent = ipInfo.org || ipInfo.asn || '--';
+        locVal.textContent = [ipInfo.city, ipInfo.country_name].filter(Boolean).join(', ') || '--';
+      } else {
+        ipVal.textContent = 'недоступно';
+        ispVal.textContent = 'недоступно';
+        locVal.textContent = 'недоступно';
+      }
+
+      const score = computeScore({ping: avg, jitter, dl, ul});
+      const stars = starsForScore(score);
+      updateStars(stars);
+      verdictText.textContent = verdicts[stars];
+
+      setStatus('ДИАГНОСТИКА ЗАВЕРШЕНА');
+    }catch(err){
+      setStatus('ОШИБКА СВЯЗИ: ' + err.message);
+      verdictText.textContent = 'Не удалось завершить тест — проверьте соединение или отключите блокировщики';
+    }finally{
+      startBtn.disabled = false;
+    }
+  }
+
+  startBtn.addEventListener('click', runDiagnostics);
+
+  resizeCanvas();
+  drawPingGraph();
+  connVal.textContent = getConnInfo();
+})();
+</script>
+</body>
+</html>
